@@ -1,0 +1,1053 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Which Countries Are Warming the Fastest?</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --bg: #ffffff;
+      --surface: #fafbfc;
+      --surface-strong: #f1f3f5;
+      --border: #d0d7de;
+      --border-soft: #e5e9ef;
+      --text: #1f2328;
+      --muted: #656d76;
+      --accent: #0969da;
+      --accent-soft: #dbeafe;
+      --hot: #c92a2a;
+      --cold: #2b6cb0;
+      --shadow: 0 1px 3px rgba(0,0,0,0.05), 0 8px 24px rgba(27,31,36,0.06);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+      padding: 1.75rem clamp(1rem, 4vw, 2.75rem) 1.5rem;
+    }
+    header h1 {
+      margin: 0;
+      color: var(--text);
+      font-size: clamp(1.55rem, 3vw, 2.35rem);
+      letter-spacing: -0.035em;
+      line-height: 1.05;
+    }
+    .subtitle {
+      margin: 0.55rem 0 0;
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+    .source-note {
+      margin-top: 0.75rem;
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      align-items: center;
+      padding: 0.45rem 0.7rem;
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    .source-note strong { color: var(--text); }
+    .source-note a { color: var(--accent); text-decoration: none; font-weight: 600; }
+    .source-note a:hover { text-decoration: underline; }
+    main {
+      width: min(1420px, 100%);
+      margin: 0 auto;
+      padding: 1.5rem clamp(1rem, 3vw, 2rem) 4rem;
+    }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+    #visualization-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 330px;
+      gap: 1rem;
+      align-items: stretch;
+    }
+    #map-panel { padding: 1rem; }
+    #map-controls {
+      display: grid;
+      grid-template-columns: minmax(280px, 1.1fr) minmax(280px, 1fr);
+      gap: 1rem 1.25rem;
+      align-items: end;
+      margin-bottom: 0.85rem;
+    }
+    .control-card {
+      background: #ffffff;
+      border: 1px solid var(--border-soft);
+      border-radius: 12px;
+      padding: 0.85rem;
+    }
+    .control-title {
+      margin: 0 0 0.55rem;
+      color: var(--text);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .metric-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.45rem;
+    }
+    .metric-btn, .tab-btn, #back-btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: #ffffff;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.86rem;
+      font-weight: 650;
+      padding: 0.55rem 0.7rem;
+      transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+    }
+    .metric-btn:hover, .tab-btn:hover, #back-btn:hover { color: var(--text); border-color: var(--muted); }
+    .metric-btn.active, .tab-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+    .range-label {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .range-label strong { color: var(--accent); font-size: 1rem; min-width: 3rem; text-align: center; }
+    .range-vs { color: var(--muted); font-size: 0.82rem; }
+    .dual-range {
+      display: flex;
+      gap: 0.8rem;
+      margin-top: 0.55rem;
+      align-items: center;
+    }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    #legend-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin: 0.25rem 0 0.75rem;
+      flex-wrap: wrap;
+    }
+    .legend-title { color: var(--text); font-size: 0.82rem; font-weight: 700; }
+    #legend-svg { display: block; overflow: visible; }
+    #map-hint {
+      color: var(--muted);
+      font-size: 0.84rem;
+      margin-bottom: 0.55rem;
+    }
+    #world-map {
+      display: block;
+      width: 100%;
+      min-height: 420px;
+      background: #d8e9f5;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      overflow: hidden;
+    }
+    .country { transition: stroke 0.12s, stroke-width 0.12s, opacity 0.12s; }
+    .country.has-data { cursor: pointer; }
+    .country.has-data:hover { stroke: #1f2328 !important; stroke-width: 1.1px !important; }
+    #ranking-panel {
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+    .rank-header { margin-bottom: 0.65rem; }
+    .rank-header h2 { margin: 0; font-size: 1.05rem; letter-spacing: -0.015em; }
+    .rank-header p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.82rem; }
+    #ranking-list { display: flex; flex-direction: column; gap: 0.42rem; }
+    .rank-row {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--border-soft);
+      background: #ffffff;
+      border-radius: 10px;
+      padding: 0.55rem 0.65rem;
+      cursor: pointer;
+    }
+    .rank-row:hover { border-color: var(--muted); }
+    .rank-bar {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 0;
+      background: linear-gradient(90deg, rgba(255, 190, 90, 0.25), rgba(201, 42, 42, 0.18));
+      pointer-events: none;
+    }
+    .rank-content {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+      gap: 0.45rem;
+      align-items: baseline;
+    }
+    .rank-num { color: var(--muted); font-size: 0.8rem; font-weight: 700; }
+    .rank-name { color: var(--text); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rank-value { color: var(--hot); font-weight: 750; font-variant-numeric: tabular-nums; }
+    .ranking-empty { color: var(--muted); font-size: 0.9rem; padding: 1rem 0; }
+    #tooltip {
+      position: fixed;
+      min-width: 160px;
+      max-width: 280px;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 100;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.65rem 0.8rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+      transition: opacity 0.1s;
+      font-size: 0.86rem;
+    }
+    #tooltip.visible { opacity: 1; }
+    .tt-name { font-weight: 800; color: var(--text); }
+    .tt-val { margin-top: 0.25rem; font-weight: 800; color: var(--hot); }
+    .tt-hint { margin-top: 0.3rem; color: var(--muted); font-size: 0.76rem; }
+    #detail-view { display: none; opacity: 0; transition: opacity 0.25s ease; }
+    #detail-view.visible { display: block; opacity: 1; }
+    #map-view { transition: opacity 0.25s ease; }
+    #map-view.fading-out { opacity: 0; pointer-events: none; }
+    #map-view.hidden { display: none; }
+    #detail-panel { padding: 1rem; }
+    #detail-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    #back-btn { flex: 0 0 auto; background: #ffffff; color: var(--text); }
+    #country-name { margin: 0; font-size: clamp(1.45rem, 3vw, 2rem); line-height: 1.1; }
+    #country-stat { margin: 0.35rem 0 0; color: var(--hot); font-weight: 750; }
+    #country-stat-secondary { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.9rem; }
+    #detail-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+      padding: 0.85rem;
+      background: #ffffff;
+      border: 1px solid var(--border-soft);
+      border-radius: 12px;
+    }
+    #metric-tabs { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+    #detail-range { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 0.86rem; }
+    #detail-range label { display: flex; gap: 0.45rem; align-items: center; }
+    #detail-range strong { min-width: 2.6rem; color: var(--text); display: inline-block; }
+    #detail-range input { width: 130px; }
+    #detail-chart { display: block; width: 100%; min-height: 420px; overflow: visible; }
+    .axis text { fill: var(--muted); font-size: 11px; }
+    .axis path, .axis line { stroke: var(--border); }
+    .axis-label { fill: var(--text); font-size: 12px; font-weight: 650; }
+    .grid-line { stroke: var(--border-soft); stroke-dasharray: 3 3; }
+    .zero-line { stroke: var(--muted); stroke-dasharray: 5 4; stroke-width: 0.9px; }
+    .legend-text { fill: var(--muted); font-size: 11px; }
+    .bar-label { fill: var(--muted); font-size: 9px; }
+    #writeup {
+      margin-top: 2.25rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+      gap: 1rem;
+      align-items: start;
+    }
+    .writeup-card { padding: 1.15rem 1.25rem; }
+    .writeup-card h2 { margin: 0 0 0.85rem; font-size: 1.25rem; letter-spacing: -0.02em; }
+    .writeup-card h3 {
+      margin: 1.25rem 0 0.45rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      font-size: 0.8rem;
+    }
+    .writeup-card p, .writeup-card li { color: #2c3338; font-size: 0.94rem; }
+    .writeup-card p { margin: 0 0 0.8rem; }
+    .writeup-card ul, .writeup-card ol { margin: 0.35rem 0 0.8rem 1.25rem; padding: 0; }
+    code { background: var(--surface-strong); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 0.86em; }
+    .caveat { border-left: 4px solid var(--accent); padding-left: 0.85rem; color: var(--muted); }
+    .placeholder { color: #9a6700; font-weight: 700; }
+    @media (max-width: 1060px) {
+      #visualization-shell, #writeup { grid-template-columns: 1fr; }
+      #ranking-panel { min-height: auto; }
+      #map-controls { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .metric-options { grid-template-columns: 1fr; }
+      .dual-range { flex-direction: column; align-items: stretch; }
+      #detail-controls { align-items: stretch; }
+      #detail-range { flex-direction: column; align-items: stretch; }
+      #detail-range input { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Which Countries Are Warming the Fastest?</h1>
+    <p class="subtitle">
+      Interactive country-level exploration of CMIP6 near-surface air temperature. Switch between average warming and warming rate, adjust the time range, and click any country for its full history.
+    </p>
+    <div class="source-note">
+      <strong>Dataset:</strong> CMIP6 CESM2 historical <code>tas</code>, preprocessed from the NOAA Public CMIP6 Dataset on Google Cloud
+      <a href="https://console.cloud.google.com/storage/browser/cmip6" target="_blank" rel="noopener">source bucket</a>
+    </div>
+  </header>
+
+  <main>
+    <section id="map-view">
+      <div id="visualization-shell">
+        <div id="map-panel" class="panel">
+          <div id="map-controls">
+            <div class="control-card">
+              <p class="control-title">Map metric</p>
+              <div class="metric-options" role="group" aria-label="Map metric">
+                <button class="metric-btn active" data-map-metric="anomaly" type="button">Average anomaly</button>
+                <button class="metric-btn" data-map-metric="rate" type="button">Warming rate</button>
+              </div>
+            </div>
+            <div class="control-card">
+              <p class="control-title">Time range</p>
+              <div class="range-label">
+                <span>Compare</span>
+                <strong id="map-year-start">2000</strong>
+                <span>-</span>
+                <strong id="map-year-end">2014</strong>
+                <span class="range-vs">against each country's 1850-1900 baseline</span>
+              </div>
+              <div class="dual-range">
+                <input id="map-slider-start" type="range" min="1850" max="2014" value="2000" step="1" aria-label="Map start year" />
+                <input id="map-slider-end" type="range" min="1850" max="2014" value="2014" step="1" aria-label="Map end year" />
+              </div>
+            </div>
+          </div>
+
+          <div id="legend-wrap">
+            <div class="legend-title" id="legend-title">Average temperature anomaly (deg C)</div>
+            <svg id="legend-svg" aria-label="Map legend"></svg>
+          </div>
+          <div id="map-hint">Hover for a value. Click a country to zoom in and inspect its annual, decadal, and trend history.</div>
+          <svg id="world-map" role="img" aria-label="World map of country-level temperature change"></svg>
+        </div>
+
+        <aside id="ranking-panel" class="panel">
+          <div class="rank-header">
+            <h2 id="rank-title">Top 10 warmest anomalies</h2>
+            <p id="rank-subtitle">Updated by the selected metric and year range.</p>
+          </div>
+          <div id="ranking-list"></div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="detail-view">
+      <div id="detail-panel" class="panel">
+        <div id="detail-header">
+          <button id="back-btn" type="button">← World Map</button>
+          <div>
+            <h2 id="country-name">Country</h2>
+            <p id="country-stat"></p>
+            <p id="country-stat-secondary"></p>
+          </div>
+        </div>
+        <div id="detail-controls">
+          <div id="metric-tabs" role="group" aria-label="Country chart metric">
+            <button class="tab-btn active" data-detail-metric="annual" type="button">Annual anomaly</button>
+            <button class="tab-btn" data-detail-metric="decadal" type="button">Decadal means</button>
+            <button class="tab-btn" data-detail-metric="rate" type="button">30-year rate</button>
+          </div>
+          <div id="detail-range">
+            <label>From <strong id="lbl-start">1850</strong><input id="slider-start" type="range" min="1850" max="2014" value="1850" step="1" /></label>
+            <label>To <strong id="lbl-end">2014</strong><input id="slider-end" type="range" min="1850" max="2014" value="2014" step="1" /></label>
+          </div>
+        </div>
+        <svg id="detail-chart" role="img" aria-label="Selected country climate history"></svg>
+      </div>
+    </section>
+
+    <section id="writeup">
+      <article class="panel writeup-card">
+        <h2>About This Visualization</h2>
+
+        <h3>Question and Motivation</h3>
+        <p>
+          The project asks which places are warming the most and which places are warming the fastest. A global average can hide important regional differences, so the visualization starts with a country-level map and then lets viewers drill into the historical record for any selected country.
+        </p>
+
+        <h3>Data and Transformations</h3>
+        <p>
+          The source data is the CMIP6 CESM2 historical monthly near-surface air temperature variable, <code>tas</code>, from the NOAA Public CMIP6 Dataset on Google Cloud. We used the <code>Amon</code> table, the <code>historical</code> experiment, and the <code>r1i1p1f1</code> member. The browser does not load the raw Zarr/NetCDF files directly; we preprocessed the data with Python/xarray and saved the result as <code>data/climate_data.json</code> for the D3 webpage.
+        </p>
+        <ol>
+          <li>Loaded the CMIP6 Zarr catalog from Google Cloud and selected CESM2 historical <code>tas</code>.</li>
+          <li>Loaded CESM2 <code>areacella</code> to get the area of each climate-model grid cell.</li>
+          <li>Used <code>regionmask</code> Natural Earth country boundaries to assign CMIP6 grid cells to countries.</li>
+          <li>Resampled monthly temperature values into annual means.</li>
+          <li>Computed each country's area-weighted annual mean temperature using <code>areacella</code>.</li>
+          <li>Converted annual temperatures from Kelvin to Celsius.</li>
+          <li>Used each country's 1850-1900 annual mean as its baseline temperature.</li>
+          <li>Computed annual anomalies by subtracting that country-specific baseline.</li>
+          <li>Computed decadal mean anomalies for each country.</li>
+          <li>Added country-name aliases so the processed country names match the GeoJSON map names.</li>
+        </ol>
+        <p>
+          The map's average-anomaly mode uses the selected years' mean anomaly from the exported annual time series. The warming-rate mode is computed client-side in JavaScript from the same annual anomaly data using a least-squares slope, reported in degrees Celsius per decade. No high-level plotting library is used in the final interactive visualization.
+        </p>
+        <p class="caveat">
+          Caveat: this is one CMIP6 model realization, not a direct observational dataset or a multi-model consensus. The visualization is best interpreted as an exploratory model-based view of geographic warming patterns. The final interactive graphic uses D3.js only; Python/xarray were used only to preprocess the raw CMIP6 files into a static JSON file.
+        </p>
+
+        <h3>Design Rationale</h3>
+        <p>
+          We chose a choropleth world map as the entry point because temperature change is geographic: readers can immediately find familiar places and compare nearby regions. The binned warm color palette makes higher warming visually salient while a gray no-data color avoids implying precision for countries too small to be represented by the model grid.
+        </p>
+        <p>
+          The map now includes two complementary encodings. Average anomaly answers "how warm is this country relative to its pre-industrial baseline?" Warming rate answers the title question more directly: "how quickly is this country warming during the selected period?" The top-10 ranking panel complements the map because small countries can be difficult to compare spatially, and rankings make the highest values explicit.
+        </p>
+        <p>
+          We considered a static map, a rotatable globe, and small multiples. A static map would not let the viewer test different time periods. A globe would be visually engaging but would make comparison harder because many countries are hidden at once. Small multiples would show time, but the design would be too crowded for a two-week project. The final design keeps the map as the overview and uses interactive filtering, ranking, tooltips, and country drill-down for exploration.
+        </p>
+
+        <p>
+          For visual appeal, we added a zoom animation when a country is clicked, so the map smoothly zooms toward the country before transitioning to its detail view. This gives readers a clear sense of moving “into” a place rather than jumping to an unrelated page. We chose a light, traditional-map aesthetic with a light-blue ocean and soft grid lines because climate is a serious topic and we wanted the data, not the chrome, to feel like the subject.
+        </p>
+
+        <h3>Interaction Design</h3>
+        <p>
+          The year sliders let users ask questions such as "which countries warmed early?" and "does the ranking change after 1980?" Hover tooltips provide details on demand without cluttering the map. Clicking a country zooms into that country and switches to a detailed view with annual anomalies, decadal averages, and a 30-year rolling warming-rate chart. This interaction supports both overview and close reading: the map shows spatial patterns, while the country view shows temporal dynamics.
+        </p>
+      </article>
+
+      <aside class="panel writeup-card">
+        <h2>Development Process</h2>
+        <p><strong>Time spent.</strong> Roughly 25 people-hours total. The breakdown:</p>
+        <ul>
+          <li><strong>~All group members - 4 hours understanding the dataset</strong> — The CMIP6 dataset is stored in Zarr on Google Cloud and has non-trivial conventions (Kelvin, cftime calendars, 0–360° longitude, unequal grid-cell areas). So really understanding the structure and how to access the data was challenging in itself.</li>
+          <li><strong>~All group members - 4 hours on exploratory plots</strong> (matplotlib + Plotly) to find a question worth asking. The pattern of individual country-level warming compared to a universal baseline time pointed us at the world-map idea.</li>
+          <li><strong>~All group members - 6 hours on the country-level aggregation</strong>, like area-weighting with <code>areacella</code>, building the <code>regionmask</code> country grid, and resolving the dozens of name mismatches between regionmask's Natural Earth full names and the GeoJSON's short names, such as “United States of America” versus “USA”.</li>
+          <li><strong>~All group members - 6 hours on the D3 visualization itself</strong>: map, color scale, tooltips, drill-down view, sliders, and the zoom animation.</li>
+          <li><strong>~All group members - 5 hours on styling, the write-up, and final polish.</strong></li>
+        </ul>
+        <p>
+          <strong>Most time consuming.</strong> Country name matching, by far. After several rounds of console-debugging missing countries, we built an alias dictionary in Python so every country in the visible map gets data. Small islands such as Vatican and Singapore still go uncolored because they are smaller than a single 1°×1° grid cell.
+        </p>
+
+        <h3>References</h3>
+        <ul>
+          <li><a href="https://console.cloud.google.com/storage/browser/cmip6" target="_blank" rel="noopener">NOAA Public CMIP6 Dataset on Google Cloud</a></li>
+          <li><a href="https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv" target="_blank" rel="noopener">CMIP6 Zarr consolidated stores catalog</a></li>
+          <li><a href="https://wcrp-cmip.org/cmip-phases/cmip6/" target="_blank" rel="noopener">WCRP CMIP6 overview</a></li>
+        </ul>
+      </aside>
+    </section>
+  </main>
+
+  <div id="tooltip"></div>
+
+  <script>
+    (async function () {
+      const GEO_URLS = [
+        "https://cdn.jsdelivr.net/gh/holtzy/D3-graph-gallery@master/DATA/world.geojson",
+        "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"
+      ];
+      const DATA_URLS = [
+        "data/climate_data.json",
+        "./data/climate_data.json",
+        "climate_data.json",
+        "./climate_data.json",
+        "https://vgao111.github.io/Climate-Data-Visualization/data/climate_data.json",
+        "https://raw.githubusercontent.com/vgao111/Climate-Data-Visualization/main/data/climate_data.json",
+        "https://cdn.jsdelivr.net/gh/vgao111/Climate-Data-Visualization@main/data/climate_data.json"
+      ];
+
+      async function loadFirstAvailableJson(urls, label) {
+        const errors = [];
+        for (const url of urls) {
+          try {
+            const data = await d3.json(url);
+            if (data) {
+              console.log(`Loaded ${label} from ${url}`);
+              return data;
+            }
+            errors.push(`${url}: empty response`);
+          } catch (error) {
+            errors.push(`${url}: ${error && error.message ? error.message : error}`);
+          }
+        }
+        throw new Error(`${label} could not be loaded. Tried: ${errors.join(" | ")}`);
+      }
+
+      let geoData, climateData;
+      try {
+        [geoData, climateData] = await Promise.all([
+          loadFirstAvailableJson(GEO_URLS, "world GeoJSON"),
+          loadFirstAvailableJson(DATA_URLS, "CMIP6 climate data")
+        ]);
+      } catch (error) {
+        document.getElementById("map-panel").innerHTML = `
+          <div class="control-card" style="padding:1.2rem">
+            <h2 style="margin:0 0 .5rem">Data file could not load</h2>
+            <p style="margin:0 0 .75rem;color:#656d76">The D3 page needs the preprocessed CMIP6 JSON file, not the Google Cloud Console browser page. This version tries the local repo path first and then your GitHub Pages/raw GitHub fallback URLs.</p>
+            <p style="margin:0 0 .75rem;color:#656d76"><strong>Best fix for submission:</strong> keep <code>index.html</code> in the repository root and keep the data file at <code>data/climate_data.json</code>. GitHub file paths are case-sensitive.</p>
+            <p style="margin:0;color:#656d76"><strong>For local testing:</strong> run <code>python -m http.server</code> in the project folder, then open <code>http://localhost:8000</code>. Do not open the HTML with <code>file://</code>.</p>
+          </div>`;
+        console.error(error);
+        return;
+      }
+
+      const features = geoData.features.filter(d => d.properties.name !== "Antarctica");
+      const countries = { type: "FeatureCollection", features };
+      const NO_DATA_COLOR = "#e9ecef";
+      const OCEAN = "#d8e9f5";
+      const GRATICULE = "#b1c9da";
+      const OUTLINE = "#7ea9c2";
+      const ANOMALY_THRESHOLDS = [0, 0.5, 1, 1.5, 2, 2.5];
+      const ANOMALY_COLORS = ["#d7eef8", "#fff4b0", "#fed976", "#fd8d3c", "#f03b20", "#bd0026", "#800026"];
+      const ANOMALY_LABELS = ["<0", "0-0.5", "0.5-1.0", "1.0-1.5", "1.5-2.0", "2.0-2.5", ">=2.5"];
+      const RATE_THRESHOLDS = [0, 0.05, 0.1, 0.2, 0.3, 0.4];
+      const RATE_COLORS = ["#d7eef8", "#fff4b0", "#fed976", "#fd8d3c", "#f03b20", "#bd0026", "#800026"];
+      const RATE_LABELS = ["<0", "0-0.05", "0.05-0.10", "0.10-0.20", "0.20-0.30", "0.30-0.40", ">=0.40"];
+
+      const anomalyColor = d3.scaleThreshold().domain(ANOMALY_THRESHOLDS).range(ANOMALY_COLORS);
+      const rateColor = d3.scaleThreshold().domain(RATE_THRESHOLDS).range(RATE_COLORS);
+
+      let mapMetric = "anomaly";
+      let mapYearStart = 2000;
+      let mapYearEnd = 2014;
+      let activeCountry = null;
+      let activeFeature = null;
+      let detailMetric = "annual";
+      let detailYearStart = 1850;
+      let detailYearEnd = 2014;
+      let mapSvg = d3.select("#world-map");
+      let mapNode = mapSvg.node();
+      let mapG, mapW, mapH, projection, pathGen;
+
+      function getClimate(feature) {
+        return climateData[feature.properties.name] || null;
+      }
+
+      function anomalyForRange(cd, y0, y1) {
+        if (!cd || !cd.timeseries) return null;
+        const rows = cd.timeseries.filter(d => d.year >= y0 && d.year <= y1 && Number.isFinite(+d.anomaly));
+        if (!rows.length) return null;
+        return d3.mean(rows, d => +d.anomaly);
+      }
+
+      function warmingRateForRange(cd, y0, y1) {
+        if (!cd || !cd.timeseries) return null;
+        const rows = cd.timeseries.filter(d => d.year >= y0 && d.year <= y1 && Number.isFinite(+d.anomaly));
+        if (rows.length < 3) return null;
+        const meanX = d3.mean(rows, d => +d.year);
+        const meanY = d3.mean(rows, d => +d.anomaly);
+        const denom = d3.sum(rows, d => Math.pow(+d.year - meanX, 2));
+        if (!denom) return null;
+        const slopePerYear = d3.sum(rows, d => (+d.year - meanX) * (+d.anomaly - meanY)) / denom;
+        return slopePerYear * 10;
+      }
+
+      function valueForRange(cd, y0 = mapYearStart, y1 = mapYearEnd) {
+        return mapMetric === "rate" ? warmingRateForRange(cd, y0, y1) : anomalyForRange(cd, y0, y1);
+      }
+
+      function formatValue(value, metric = mapMetric) {
+        if (value == null || !Number.isFinite(value)) return "No data";
+        const sign = value >= 0 ? "+" : "";
+        return metric === "rate" ? `${sign}${value.toFixed(2)} deg C/decade` : `${sign}${value.toFixed(2)} deg C`;
+      }
+
+      function colorForValue(value) {
+        if (value == null || !Number.isFinite(value)) return NO_DATA_COLOR;
+        return mapMetric === "rate" ? rateColor(value) : anomalyColor(value);
+      }
+
+      function buildMap() {
+        mapW = mapNode.clientWidth || 960;
+        mapH = Math.max(420, Math.min(Math.round(mapW * 0.56), Math.round(window.innerHeight * 0.72)));
+        mapNode.style.height = mapH + "px";
+        mapSvg.attr("viewBox", `0 0 ${mapW} ${mapH}`);
+        projection = d3.geoNaturalEarth1().fitSize([mapW, mapH], { type: "Sphere" });
+        pathGen = d3.geoPath().projection(projection);
+        mapSvg.selectAll("*").remove();
+
+        mapSvg.append("rect")
+          .attr("width", mapW)
+          .attr("height", mapH)
+          .attr("fill", OCEAN);
+
+        mapG = mapSvg.append("g").attr("class", "map-g");
+        mapG.append("path")
+          .datum(d3.geoGraticule()())
+          .attr("d", pathGen)
+          .attr("fill", "none")
+          .attr("stroke", GRATICULE)
+          .attr("stroke-width", 0.4);
+
+        mapG.append("path")
+          .datum({ type: "Sphere" })
+          .attr("d", pathGen)
+          .attr("fill", "none")
+          .attr("stroke", OUTLINE)
+          .attr("stroke-width", 0.9);
+
+        mapG.selectAll(".country")
+          .data(countries.features)
+          .join("path")
+          .attr("class", d => "country" + (getClimate(d) ? " has-data" : ""))
+          .attr("d", pathGen)
+          .attr("stroke", "#ffffff")
+          .attr("stroke-width", 0.45)
+          .on("mouseover", onMouseOver)
+          .on("mousemove", onMouseMove)
+          .on("mouseout", onMouseOut)
+          .on("click", (event, d) => openCountryDetail(d, true));
+
+        recolorMap();
+      }
+
+      function recolorMap() {
+        if (!mapG) return;
+        mapG.selectAll(".country")
+          .attr("fill", d => colorForValue(valueForRange(getClimate(d))));
+        updateLegend();
+        updateRanking();
+      }
+
+      function updateLegend() {
+        const labels = mapMetric === "rate" ? RATE_LABELS : ANOMALY_LABELS;
+        const colors = mapMetric === "rate" ? RATE_COLORS : ANOMALY_COLORS;
+        const title = mapMetric === "rate" ? "Warming rate (deg C per decade)" : "Average temperature anomaly (deg C)";
+        document.getElementById("legend-title").textContent = title;
+        const svg = d3.select("#legend-svg");
+        svg.selectAll("*").remove();
+        const cellW = 54;
+        const cellH = 15;
+        const totalW = cellW * colors.length;
+        svg.attr("width", totalW).attr("height", cellH + 18);
+        colors.forEach((color, i) => {
+          svg.append("rect")
+            .attr("x", i * cellW)
+            .attr("y", 0)
+            .attr("width", cellW)
+            .attr("height", cellH)
+            .attr("fill", color)
+            .attr("stroke", "#d0d7de")
+            .attr("stroke-width", 0.5);
+          svg.append("text")
+            .attr("x", i * cellW + cellW / 2)
+            .attr("y", cellH + 12)
+            .attr("text-anchor", "middle")
+            .attr("font-size", 9)
+            .attr("fill", "#656d76")
+            .text(labels[i]);
+        });
+      }
+
+      function updateRanking() {
+        const rows = countries.features
+          .map(feature => {
+            const cd = getClimate(feature);
+            return { feature, cd, value: valueForRange(cd) };
+          })
+          .filter(d => d.cd && d.value != null && Number.isFinite(d.value))
+          .sort((a, b) => d3.descending(a.value, b.value))
+          .slice(0, 10);
+
+        document.getElementById("rank-title").textContent = mapMetric === "rate" ? "Top 10 fastest warming" : "Top 10 warmest anomalies";
+        document.getElementById("rank-subtitle").textContent = mapMetric === "rate"
+          ? `${mapYearStart}-${mapYearEnd} linear trend, deg C per decade`
+          : `${mapYearStart}-${mapYearEnd} mean anomaly vs 1850-1900`;
+
+        const list = d3.select("#ranking-list");
+        list.selectAll("*").remove();
+        if (!rows.length) {
+          list.append("div").attr("class", "ranking-empty").text("No country data for this time range.");
+          return;
+        }
+        const maxAbs = d3.max(rows, d => Math.abs(d.value)) || 1;
+        const row = list.selectAll(".rank-row")
+          .data(rows)
+          .join("div")
+          .attr("class", "rank-row")
+          .on("click", (event, d) => openCountryDetail(d.feature, true));
+        row.append("div")
+          .attr("class", "rank-bar")
+          .style("width", d => `${Math.max(5, Math.abs(d.value) / maxAbs * 100)}%`);
+        const content = row.append("div").attr("class", "rank-content");
+        content.append("div").attr("class", "rank-num").text((d, i) => `${i + 1}`);
+        content.append("div").attr("class", "rank-name").text(d => d.cd.name || d.feature.properties.name);
+        content.append("div").attr("class", "rank-value").text(d => formatValue(d.value));
+      }
+
+      const tooltip = document.getElementById("tooltip");
+      function onMouseOver(event, d) {
+        const cd = getClimate(d);
+        const value = valueForRange(cd);
+        if (!cd || value == null) return;
+        tooltip.innerHTML = `
+          <div class="tt-name">${cd.name || d.properties.name}</div>
+          <div class="tt-val">${formatValue(value)}</div>
+          <div class="tt-hint">${mapMetric === "rate" ? "Linear trend" : "Mean anomaly"} for ${mapYearStart}-${mapYearEnd}. Click to explore.</div>`;
+        tooltip.classList.add("visible");
+      }
+      function onMouseMove(event) {
+        tooltip.style.left = (event.clientX + 14) + "px";
+        tooltip.style.top = (event.clientY - 12) + "px";
+      }
+      function onMouseOut() {
+        tooltip.classList.remove("visible");
+      }
+
+      function openCountryDetail(feature, animateMap) {
+        const cd = getClimate(feature);
+        if (!cd) return;
+        tooltip.classList.remove("visible");
+        activeCountry = cd;
+        activeFeature = feature;
+        detailYearStart = 1850;
+        detailYearEnd = 2014;
+        document.getElementById("slider-start").value = 1850;
+        document.getElementById("slider-end").value = 2014;
+        document.getElementById("lbl-start").textContent = 1850;
+        document.getElementById("lbl-end").textContent = 2014;
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        document.querySelector('[data-detail-metric="annual"]').classList.add("active");
+        detailMetric = "annual";
+
+        if (animateMap && mapG && pathGen) {
+          const bounds = pathGen.bounds(feature);
+          const bw = Math.max(1, bounds[1][0] - bounds[0][0]);
+          const bh = Math.max(1, bounds[1][1] - bounds[0][1]);
+          const cx = (bounds[0][0] + bounds[1][0]) / 2;
+          const cy = (bounds[0][1] + bounds[1][1]) / 2;
+          const scale = Math.max(1.5, Math.min(8, 0.55 * Math.min(mapW / bw, mapH / bh)));
+          const tx = mapW / 2 - cx * scale;
+          const ty = mapH / 2 - cy * scale;
+          mapG.transition().duration(600).ease(d3.easeCubicInOut).attr("transform", `translate(${tx},${ty}) scale(${scale})`);
+          mapG.selectAll(".country").filter(o => o !== feature).transition().duration(450).attr("opacity", 0.25);
+          mapG.selectAll(".country").filter(o => o === feature).transition().duration(450).attr("stroke", "#1f2328").attr("stroke-width", 0.35);
+        }
+
+        setTimeout(() => {
+          updateCountryHeader();
+          const mv = document.getElementById("map-view");
+          const dv = document.getElementById("detail-view");
+          mv.classList.add("fading-out");
+          setTimeout(() => {
+            mv.classList.add("hidden");
+            mv.classList.remove("fading-out");
+            dv.classList.add("visible");
+            drawDetailChart();
+          }, 250);
+        }, animateMap ? 520 : 0);
+      }
+
+      function updateCountryHeader() {
+        if (!activeCountry) return;
+        const selectedValue = valueForRange(activeCountry, mapYearStart, mapYearEnd);
+        const anomaly = anomalyForRange(activeCountry, mapYearStart, mapYearEnd);
+        const rate = warmingRateForRange(activeCountry, mapYearStart, mapYearEnd);
+        document.getElementById("country-name").textContent = activeCountry.name || "Selected country";
+        document.getElementById("country-stat").textContent = mapMetric === "rate"
+          ? `${formatValue(selectedValue, "rate")} warming trend over ${mapYearStart}-${mapYearEnd}`
+          : `${formatValue(selectedValue, "anomaly")} average anomaly over ${mapYearStart}-${mapYearEnd}`;
+        document.getElementById("country-stat-secondary").textContent = `For the selected map period: mean anomaly ${formatValue(anomaly, "anomaly")}; linear warming rate ${formatValue(rate, "rate")}.`;
+      }
+
+      document.getElementById("back-btn").addEventListener("click", () => {
+        const mv = document.getElementById("map-view");
+        const dv = document.getElementById("detail-view");
+        dv.classList.remove("visible");
+        setTimeout(() => {
+          mv.classList.remove("hidden");
+          mv.offsetHeight;
+          if (mapG) {
+            mapG.transition().duration(600).ease(d3.easeCubicInOut).attr("transform", null);
+            mapG.selectAll(".country").transition().duration(450).attr("opacity", 1).attr("stroke", "#ffffff").attr("stroke-width", 0.45);
+          }
+          activeCountry = null;
+          activeFeature = null;
+        }, 250);
+      });
+
+      document.querySelectorAll(".metric-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".metric-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          mapMetric = btn.dataset.mapMetric;
+          recolorMap();
+        });
+      });
+
+      const mapSliderStart = document.getElementById("map-slider-start");
+      const mapSliderEnd = document.getElementById("map-slider-end");
+      const mapYearStartEl = document.getElementById("map-year-start");
+      const mapYearEndEl = document.getElementById("map-year-end");
+      function onMapSlider() {
+        let s = +mapSliderStart.value;
+        let e = +mapSliderEnd.value;
+        if (s > e) {
+          if (this === mapSliderStart) e = s;
+          else s = e;
+          mapSliderStart.value = s;
+          mapSliderEnd.value = e;
+        }
+        mapYearStart = s;
+        mapYearEnd = e;
+        mapYearStartEl.textContent = s;
+        mapYearEndEl.textContent = e;
+        recolorMap();
+        updateCountryHeader();
+      }
+      mapSliderStart.addEventListener("input", onMapSlider);
+      mapSliderEnd.addEventListener("input", onMapSlider);
+
+      document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          detailMetric = btn.dataset.detailMetric;
+          if (activeCountry) drawDetailChart();
+        });
+      });
+
+      const sliderStart = document.getElementById("slider-start");
+      const sliderEnd = document.getElementById("slider-end");
+      sliderStart.addEventListener("input", function () {
+        detailYearStart = +this.value;
+        if (detailYearStart > detailYearEnd) {
+          detailYearEnd = detailYearStart;
+          sliderEnd.value = detailYearEnd;
+        }
+        document.getElementById("lbl-start").textContent = detailYearStart;
+        document.getElementById("lbl-end").textContent = detailYearEnd;
+        if (activeCountry) drawDetailChart();
+      });
+      sliderEnd.addEventListener("input", function () {
+        detailYearEnd = +this.value;
+        if (detailYearEnd < detailYearStart) {
+          detailYearStart = detailYearEnd;
+          sliderStart.value = detailYearStart;
+        }
+        document.getElementById("lbl-start").textContent = detailYearStart;
+        document.getElementById("lbl-end").textContent = detailYearEnd;
+        if (activeCountry) drawDetailChart();
+      });
+
+      function drawDetailChart() {
+        const svgEl = document.getElementById("detail-chart");
+        const totalW = svgEl.clientWidth || 900;
+        const totalH = 430;
+        const margin = { top: 25, right: 36, bottom: 60, left: 70 };
+        const W = totalW - margin.left - margin.right;
+        const H = totalH - margin.top - margin.bottom;
+        const svg = d3.select("#detail-chart").attr("width", totalW).attr("height", totalH);
+        svg.selectAll("*").remove();
+        const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+        if (detailMetric === "annual") drawAnnual(g, W, H);
+        else if (detailMetric === "decadal") drawDecadal(g, W, H);
+        else drawRate(g, W, H);
+      }
+
+      function filteredTimeseries() {
+        return activeCountry.timeseries
+          .filter(d => d.year >= detailYearStart && d.year <= detailYearEnd && Number.isFinite(+d.anomaly))
+          .map(d => ({ year: +d.year, anomaly: +d.anomaly, temp: +d.temp }));
+      }
+
+      function drawGridAndAxes(g, x, y, W, H, yFormat, xTicks = 8) {
+        g.append("g").selectAll(".grid-line")
+          .data(y.ticks(5)).join("line")
+          .attr("class", "grid-line")
+          .attr("x1", 0).attr("x2", W)
+          .attr("y1", d => y(d)).attr("y2", d => y(d));
+        if (y.domain()[0] < 0 && y.domain()[1] > 0) {
+          g.append("line").attr("class", "zero-line")
+            .attr("x1", 0).attr("x2", W)
+            .attr("y1", y(0)).attr("y2", y(0));
+        }
+        g.append("g").attr("class", "axis").attr("transform", `translate(0,${H})`)
+          .call(d3.axisBottom(x).tickFormat(d3.format("d")).ticks(xTicks));
+        g.append("g").attr("class", "axis").call(d3.axisLeft(y).tickFormat(yFormat));
+      }
+
+      function drawAnnual(g, W, H) {
+        const data = filteredTimeseries();
+        if (!data.length) return;
+        const rolled = rollingMean(data, 10);
+        const x = d3.scaleLinear().domain(d3.extent(data, d => d.year)).range([0, W]);
+        const allY = [...data.map(d => d.anomaly), ...rolled.filter(d => d.value != null).map(d => d.value)];
+        const y = d3.scaleLinear().domain(d3.extent(allY)).nice().range([H, 0]);
+        drawGridAndAxes(g, x, y, W, H, d => `${d >= 0 ? "+" : ""}${d.toFixed(1)} C`);
+        g.append("path")
+          .datum(data)
+          .attr("fill", "rgba(201,42,42,0.10)")
+          .attr("d", d3.area().x(d => x(d.year)).y0(y(Math.max(0, y.domain()[0]))).y1(d => y(d.anomaly)).curve(d3.curveMonotoneX));
+        g.append("path")
+          .datum(data)
+          .attr("fill", "none")
+          .attr("stroke", "#c92a2a")
+          .attr("stroke-width", 1)
+          .attr("opacity", 0.38)
+          .attr("d", d3.line().x(d => x(d.year)).y(d => y(d.anomaly)).curve(d3.curveMonotoneX));
+        const cleanRolled = rolled.filter(d => d.value != null);
+        g.append("path")
+          .datum(cleanRolled)
+          .attr("fill", "none")
+          .attr("stroke", "#c92a2a")
+          .attr("stroke-width", 3)
+          .attr("d", d3.line().x(d => x(d.year)).y(d => y(d.value)).curve(d3.curveMonotoneX));
+        addAxisLabels(g, W, H, "Year", "Anomaly vs 1850-1900 (deg C)");
+        addLineLegend(g, W, [{ label: "Annual", width: 1, opacity: 0.4 }, { label: "10-year rolling mean", width: 3, opacity: 1 }]);
+      }
+
+      function drawDecadal(g, W, H) {
+        const data = activeCountry.decadal
+          .filter(d => d.year >= detailYearStart && d.year <= detailYearEnd && Number.isFinite(+d.anomaly))
+          .map(d => ({ decade: d.decade, year: +d.year, anomaly: +d.anomaly }));
+        if (!data.length) return;
+        const x = d3.scaleBand().domain(data.map(d => d.decade)).range([0, W]).padding(0.22);
+        const yMin = Math.min(0, d3.min(data, d => d.anomaly) - 0.05);
+        const yMax = d3.max(data, d => d.anomaly) + 0.08;
+        const y = d3.scaleLinear().domain([yMin, yMax]).nice().range([H, 0]);
+        g.append("g").selectAll(".grid-line")
+          .data(y.ticks(5)).join("line")
+          .attr("class", "grid-line")
+          .attr("x1", 0).attr("x2", W)
+          .attr("y1", d => y(d)).attr("y2", d => y(d));
+        g.append("line").attr("class", "zero-line").attr("x1", 0).attr("x2", W).attr("y1", y(0)).attr("y2", y(0));
+        g.selectAll(".bar").data(data).join("rect")
+          .attr("class", "bar")
+          .attr("x", d => x(d.decade))
+          .attr("width", x.bandwidth())
+          .attr("y", d => d.anomaly >= 0 ? y(d.anomaly) : y(0))
+          .attr("height", d => Math.abs(y(d.anomaly) - y(0)))
+          .attr("fill", d => anomalyColor(d.anomaly))
+          .attr("stroke", "#c0c5cb")
+          .attr("stroke-width", 0.5)
+          .attr("rx", 3);
+        g.selectAll(".bar-label").data(data).join("text")
+          .attr("class", "bar-label")
+          .attr("x", d => x(d.decade) + x.bandwidth() / 2)
+          .attr("y", d => d.anomaly >= 0 ? y(d.anomaly) - 5 : y(d.anomaly) + 13)
+          .attr("text-anchor", "middle")
+          .text(d => `${d.anomaly >= 0 ? "+" : ""}${d.anomaly.toFixed(2)}`);
+        g.append("g").attr("class", "axis").attr("transform", `translate(0,${H})`).call(d3.axisBottom(x))
+          .selectAll("text").attr("transform", "rotate(-40)").style("text-anchor", "end");
+        g.append("g").attr("class", "axis").call(d3.axisLeft(y).tickFormat(d => `${d >= 0 ? "+" : ""}${d.toFixed(1)} C`));
+        addAxisLabels(g, W, H, "Decade", "Mean anomaly vs 1850-1900 (deg C)");
+      }
+
+      function drawRate(g, W, H) {
+        const full = activeCountry.timeseries
+          .filter(d => d.year >= detailYearStart && d.year <= detailYearEnd && Number.isFinite(+d.anomaly))
+          .map(d => ({ year: +d.year, anomaly: +d.anomaly }));
+        const rates = rollingRate(full, 30);
+        if (!rates.length) {
+          g.append("text").attr("x", 0).attr("y", 30).attr("fill", "#656d76")
+            .text("Choose at least 30 years to show a rolling warming-rate trend.");
+          return;
+        }
+        const x = d3.scaleLinear().domain(d3.extent(rates, d => d.year)).range([0, W]);
+        const y = d3.scaleLinear().domain(d3.extent(rates, d => d.rate)).nice().range([H, 0]);
+        drawGridAndAxes(g, x, y, W, H, d => `${d >= 0 ? "+" : ""}${d.toFixed(2)} C/dec`, 8);
+        g.append("path")
+          .datum(rates)
+          .attr("fill", "none")
+          .attr("stroke", "#c92a2a")
+          .attr("stroke-width", 2.8)
+          .attr("d", d3.line().x(d => x(d.year)).y(d => y(d.rate)).curve(d3.curveMonotoneX));
+        g.selectAll(".rate-dot").data(rates).join("circle")
+          .attr("class", "rate-dot")
+          .attr("cx", d => x(d.year))
+          .attr("cy", d => y(d.rate))
+          .attr("r", 2)
+          .attr("fill", "#c92a2a")
+          .attr("opacity", 0.45);
+        addAxisLabels(g, W, H, "Center year of 30-year window", "Warming rate (deg C per decade)");
+      }
+
+      function addAxisLabels(g, W, H, xLabel, yLabel) {
+        g.append("text").attr("class", "axis-label")
+          .attr("x", W / 2).attr("y", H + 48).attr("text-anchor", "middle")
+          .text(xLabel);
+        g.append("text").attr("class", "axis-label")
+          .attr("transform", "rotate(-90)")
+          .attr("x", -H / 2).attr("y", -52).attr("text-anchor", "middle")
+          .text(yLabel);
+      }
+
+      function addLineLegend(g, W, items) {
+        const leg = g.append("g").attr("transform", `translate(${Math.max(0, W - 185)}, 2)`);
+        items.forEach((item, i) => {
+          const y = 8 + i * 20;
+          leg.append("line")
+            .attr("x1", 0).attr("x2", 18).attr("y1", y).attr("y2", y)
+            .attr("stroke", "#c92a2a").attr("stroke-width", item.width).attr("opacity", item.opacity);
+          leg.append("text").attr("class", "legend-text").attr("x", 24).attr("y", y + 4).text(item.label);
+        });
+      }
+
+      function rollingMean(data, windowSize) {
+        const half = Math.floor(windowSize / 2);
+        return data.map((d, i) => {
+          const slice = data.slice(Math.max(0, i - half), Math.min(data.length, i + half + 1));
+          return { year: d.year, value: slice.length >= half ? d3.mean(slice, s => s.anomaly) : null };
+        });
+      }
+
+      function rollingRate(data, windowSize) {
+        const half = Math.floor(windowSize / 2);
+        const out = [];
+        data.forEach((d, i) => {
+          const start = Math.max(0, i - half);
+          const end = Math.min(data.length, i + half + 1);
+          const slice = data.slice(start, end);
+          if (slice.length >= windowSize * 0.75) {
+            const meanX = d3.mean(slice, s => s.year);
+            const meanY = d3.mean(slice, s => s.anomaly);
+            const denom = d3.sum(slice, s => Math.pow(s.year - meanX, 2));
+            if (denom) {
+              const slope = d3.sum(slice, s => (s.year - meanX) * (s.anomaly - meanY)) / denom;
+              out.push({ year: d.year, rate: slope * 10 });
+            }
+          }
+        });
+        return out;
+      }
+
+      buildMap();
+      window.addEventListener("resize", () => {
+        buildMap();
+        if (activeCountry) drawDetailChart();
+      });
+    })();
+  </script>
+</body>
+</html>
